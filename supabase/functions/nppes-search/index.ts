@@ -248,17 +248,7 @@ const supabase: SupabaseClient | null =
 
 // ── Hono app ──────────────────────────────────────────────────────────────────
 
-// DIAGNOSTIC: no basePath for now -- remove once the real prefix is confirmed
-// and replace with `new Hono({ basePath: "<confirmed prefix>" })`.
 const app = new Hono();
-
-// DIAGNOSTIC: catch-all reporting the exact pathname Hono sees. Remove this
-// block once the real prefix is confirmed -- it currently shadows every
-// route below it.
-app.all("*", (c) => {
-  const u = new URL(c.req.url);
-  return c.json({ diagnostic: true, pathname: u.pathname, href: u.href, method: c.req.method });
-});
 
 app.get("/api/", async (c) => {
   if (!supabase) {
@@ -363,4 +353,16 @@ app.get("/api/", async (c) => {
 app.get("/api", (c) => c.redirect("/api/", 301));
 app.get("/", (c) => c.json({ status: "ok", version: "1.0.0" }));
 
-Deno.serve(app.fetch);
+// Supabase passes the full invocation path to the Deno handler.
+// Strip the /nppes-search function-slug prefix (if present) before Hono
+// routing so that /api/ matches correctly regardless of what the edge
+// runtime injects.
+Deno.serve((req) => {
+  const url = new URL(req.url);
+  const stripped = url.pathname.replace(/^\/nppes-search/, "") || "/";
+  if (stripped !== url.pathname) {
+    url.pathname = stripped;
+    return app.fetch(new Request(url.toString(), req));
+  }
+  return app.fetch(req);
+});
