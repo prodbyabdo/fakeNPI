@@ -8,6 +8,10 @@
 //
 // Intentional deviations from the official API:
 //   - No cap on `skip` (official caps at ~1000; we remove this to expose the full dataset)
+//
+// TEMPORARY DIAGNOSTIC: a catch-all route above everything else reports the
+// exact pathname Hono sees for a request, so we can pick the right basePath.
+// Remove the "DIAGNOSTIC" block once that's confirmed and this is redeployed for real.
 
 import { Hono } from "jsr:@hono/hono@^4.13.1";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@^2";
@@ -244,7 +248,17 @@ const supabase: SupabaseClient | null =
 
 // ── Hono app ──────────────────────────────────────────────────────────────────
 
-const app = new Hono({ basePath: "/functions/v1/nppes-search" });
+// DIAGNOSTIC: no basePath for now -- remove once the real prefix is confirmed
+// and replace with `new Hono({ basePath: "<confirmed prefix>" })`.
+const app = new Hono();
+
+// DIAGNOSTIC: catch-all reporting the exact pathname Hono sees. Remove this
+// block once the real prefix is confirmed -- it currently shadows every
+// route below it.
+app.all("*", (c) => {
+  const u = new URL(c.req.url);
+  return c.json({ diagnostic: true, pathname: u.pathname, href: u.href, method: c.req.method });
+});
 
 app.get("/api/", async (c) => {
   if (!supabase) {
