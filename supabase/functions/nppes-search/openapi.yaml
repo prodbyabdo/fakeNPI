@@ -1,0 +1,328 @@
+openapi: "3.1.0"
+info:
+  title: NPI Registry (fakeNPI)
+  description: |
+    Personal-pilot replica of the CMS NPPES NPI Registry API backed by a local Supabase
+    Postgres database. Response shape is intentionally identical to the real API at
+    `https://npiregistry.cms.hhs.gov/api/` so existing `normalizeProvider()` consumers
+    need no changes — only the `BASE_URL` constant differs.
+  version: "1.0.0"
+  contact:
+    name: fakeNPI (personal project)
+
+servers:
+  - url: https://zvthhjediuelpvzkkzvy.supabase.co/functions/v1/nppes-search
+    description: Supabase Edge Function (production)
+
+tags:
+  - name: NPI Lookup
+    description: Exact NPI number lookup
+  - name: NPI Search
+    description: Filtered provider search
+
+paths:
+  /api/:
+    get:
+      summary: Lookup or search NPI providers
+      description: |
+        Branches on the presence of the `number` parameter:
+        - **If `number` is present** — exact NPI lookup; all other filter params ignored.
+        - **Otherwise** — filtered search; at least one filter param required.
+
+        Mirrors the CMS NPPES REST API contract at `https://npiregistry.cms.hhs.gov/api/`.
+      operationId: searchNpi
+      tags: [NPI Lookup, NPI Search]
+      parameters:
+        - name: version
+          in: query
+          description: API version (always "2.1" — accepted and ignored)
+          schema: { type: string, default: "2.1", example: "2.1" }
+        - name: number
+          in: query
+          description: |
+            10-digit NPI number. When present, performs an exact lookup and all other
+            parameters are ignored. Triggers the NPI-Lookup branch.
+          schema:
+            type: string
+            pattern: '^\d{10}$'
+            example: "1720081763"
+        - name: enumeration_type
+          in: query
+          description: |
+            `NPI-1` (individual) or `NPI-2` (organization). Omit for both types.
+            Only used in search branch.
+          schema:
+            type: string
+            enum: [NPI-1, NPI-2]
+        - name: organization_name
+          in: query
+          description: |
+            Case-insensitive partial match against provider/organization name (ILIKE `%value%`).
+          schema: { type: string, example: "pharmacy" }
+        - name: city
+          in: query
+          description: |
+            Case-insensitive city name match. Treated as exact after case normalization.
+          schema: { type: string, example: "Louisville" }
+        - name: state
+          in: query
+          description: Two-letter US state code (auto-uppercased).
+          schema:
+            type: string
+            minLength: 2
+            maxLength: 2
+            example: "KY"
+        - name: taxonomy_description
+          in: query
+          description: |
+            Case-insensitive partial match against primary taxonomy description.
+          schema: { type: string, example: "pharmacy" }
+        - name: limit
+          in: query
+          description: Number of results per page. Min 1, max 200.
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 200
+        - name: skip
+          in: query
+          description: Number of results to skip (offset pagination). Min 0.
+          schema:
+            type: integer
+            default: 0
+            minimum: 0
+
+      responses:
+        "200":
+          description: Successful result set (may be empty for search, exactly 0–1 for exact lookup)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NppesResponse" }
+              examples:
+                org_lookup:
+                  summary: Exact NPI lookup — organization
+                  value:
+                    result_count: 1
+                    results:
+                      - number: "1720081763"
+                        enumeration_type: "NPI-2"
+                        basic:
+                          status: "A"
+                          organization_name: "TOWNE & COUNTRY PHARMACY FLORIST & GIFTS INC"
+                          enumeration_type: "NPI-2"
+                          authorized_official_first_name: "LORI"
+                          authorized_official_last_name: "HENNING"
+                          authorized_official_title_or_position: "OWNER/PHARMACIST"
+                          last_updated: "2021-12-18"
+                        addresses:
+                          - address_type: "LOCATION"
+                            city: "HARDINSBURG"
+                            state: "KY"
+                            postal_code: "401430675"
+                            country_code: "US"
+                            telephone_number: "2707562151"
+                        taxonomies:
+                          - code: "3336C0003X"
+                            desc: ""
+                            primary: true
+                            state: ""
+                            license: ""
+                search_empty:
+                  summary: Search with no matching results
+                  value:
+                    result_count: 0
+                    results: []
+
+        "400":
+          description: No search criteria provided
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NppesErrorResponse" }
+              example:
+                Errors:
+                  - description: "Please enter a value in at least one of the search criteria fields."
+                    field: "NPI/Number"
+                    number: "2002"
+
+        "500":
+          description: Database or server error
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NppesErrorResponse" }
+              example:
+                Errors:
+                  - description: "relation \"npi_records\" does not exist"
+                    number: "5000"
+
+components:
+  schemas:
+    NppesResponse:
+      type: object
+      required: [result_count, results]
+      properties:
+        result_count:
+          type: integer
+          description: Total number of matching records (not just this page)
+          example: 42
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/NppesResult" }
+
+    NppesResult:
+      type: object
+      required: [number, enumeration_type, basic, addresses, taxonomies]
+      properties:
+        number:
+          type: string
+          description: 10-digit NPI number
+          pattern: '^\d{10}$'
+          example: "1720081763"
+        enumeration_type:
+          type: string
+          enum: [NPI-1, NPI-2]
+        created_epoch:
+          type: "null"
+          nullable: true
+        last_updated_epoch:
+          type: "null"
+          nullable: true
+        basic:
+          $ref: "#/components/schemas/NppesBasic"
+        addresses:
+          type: array
+          items: { $ref: "#/components/schemas/NppesAddress" }
+        practiceLocations:
+          type: array
+          items: {}
+        taxonomies:
+          type: array
+          items: { $ref: "#/components/schemas/NppesTaxonomy" }
+        identifiers:
+          type: array
+          items: {}
+        endpoints:
+          type: array
+          items: {}
+        other_names:
+          type: array
+          items: {}
+
+    NppesBasic:
+      type: object
+      description: |
+        Core provider data. Keys vary by `enumeration_type`:
+        - **NPI-2 (organization)**: `organization_name`, `authorized_official_*`
+        - **NPI-1 (individual)**: `first_name`, `last_name`
+      properties:
+        status:
+          type: string
+          nullable: true
+          example: "A"
+        last_updated:
+          type: string
+          nullable: true
+          example: "2021-12-18"
+        enumeration_type:
+          type: string
+          enum: [NPI-1, NPI-2]
+        # NPI-2 fields
+        organization_name:
+          type: string
+          nullable: true
+        authorized_official_first_name:
+          type: string
+          nullable: true
+        authorized_official_last_name:
+          type: string
+          nullable: true
+        authorized_official_credential:
+          type: string
+          nullable: true
+        authorized_official_title_or_position:
+          type: string
+          nullable: true
+        authorized_official_telephone_number:
+          type: string
+          nullable: true
+        # NPI-1 fields
+        first_name:
+          type: string
+          nullable: true
+        last_name:
+          type: string
+          nullable: true
+
+    NppesAddress:
+      type: object
+      required: [address_type, country_code]
+      properties:
+        address_1:
+          type: string
+          nullable: true
+        address_2:
+          type: string
+          default: ""
+        city:
+          type: string
+          nullable: true
+        state:
+          type: string
+          nullable: true
+        postal_code:
+          type: string
+          nullable: true
+        country_code:
+          type: string
+          default: "US"
+          example: "US"
+        country_name:
+          type: string
+          example: "United States"
+        address_type:
+          type: string
+          enum: [LOCATION, MAILING]
+        telephone_number:
+          type: string
+          nullable: true
+
+    NppesTaxonomy:
+      type: object
+      required: [code, primary]
+      properties:
+        code:
+          type: string
+          example: "3336C0003X"
+        desc:
+          type: string
+          default: ""
+        primary:
+          type: boolean
+          example: true
+        state:
+          type: string
+          default: ""
+        license:
+          type: string
+          default: ""
+
+    NppesErrorResponse:
+      type: object
+      required: [Errors]
+      properties:
+        Errors:
+          type: array
+          items:
+            type: object
+            required: [description, number]
+            properties:
+              description:
+                type: string
+                example: "Please enter a value in at least one of the search criteria fields."
+              field:
+                type: string
+                example: "NPI/Number"
+              number:
+                type: string
+                description: NPPES error code string
+                example: "2002"

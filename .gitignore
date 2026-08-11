@@ -1,0 +1,9 @@
+# Supabase project
+.env
+db/functions
+db/storage
+.agents
+
+
+# node
+node_modules/
