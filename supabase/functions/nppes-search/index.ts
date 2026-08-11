@@ -244,7 +244,7 @@ const supabase: SupabaseClient | null =
 
 // ── Hono app ──────────────────────────────────────────────────────────────────
 
-const app = new Hono();
+const app = new Hono({ basePath: "/functions/v1/nppes-search" });
 
 app.get("/api/", async (c) => {
   if (!supabase) {

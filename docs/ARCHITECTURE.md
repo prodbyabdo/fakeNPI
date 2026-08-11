@@ -53,7 +53,13 @@ graph TD
 ## 🔄 Execution & Data Flow
 
 ### 1. Request Routing
-The Hono application handles requests at the root endpoint:
+Supabase Edge Functions receive the **full invocation path** — e.g., `/functions/v1/nppes-search/api/?...` — not a path relative to the function root. To prevent Hono from failing to match any route, the app is instantiated with an explicit `basePath`:
+
+```ts
+const app = new Hono({ basePath: "/functions/v1/nppes-search" });
+```
+
+This strips the `/functions/v1/nppes-search` prefix before route matching, so the following routes resolve correctly:
 - **`GET /api/`**: Primary search and lookup endpoint.
 - **`GET /api`**: Redirects (301) to `/api/` to preserve CMS endpoint convention.
 - **`GET /`**: Healthcheck endpoint returning `{ "status": "ok", "version": "1.0.0" }`.
