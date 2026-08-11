@@ -2,16 +2,16 @@ openapi: "3.1.0"
 info:
   title: NPI Registry (fakeNPI)
   description: |
-    Personal-pilot replica of the CMS NPPES NPI Registry API backed by a local Supabase
+    Personal-pilot replica of the CMS NPPES NPI Registry API v2.1 backed by a local Supabase
     Postgres database. Response shape is intentionally identical to the real API at
     `https://npiregistry.cms.hhs.gov/api/` so existing `normalizeProvider()` consumers
     need no changes — only the `BASE_URL` constant differs.
-  version: "1.0.0"
+  version: "2.1.0"
   contact:
     name: fakeNPI (personal project)
 
 servers:
-  - url: https://zvthhjediuelpvzkkzvy.supabase.co/functions/v1/nppes-search
+  - url: https://<your-project-ref>.supabase.co/functions/v1/nppes-search
     description: Supabase Edge Function (production)
 
 tags:
@@ -37,6 +37,10 @@ paths:
           in: query
           description: API version (always "2.1" — accepted and ignored)
           schema: { type: string, default: "2.1", example: "2.1" }
+        - name: pretty
+          in: query
+          description: Pretty print JSON response (accepted and ignored)
+          schema: { type: boolean, example: true }
         - name: number
           in: query
           description: |
@@ -50,7 +54,6 @@ paths:
           in: query
           description: |
             `NPI-1` (individual) or `NPI-2` (organization). Omit for both types.
-            Only used in search branch.
           schema:
             type: string
             enum: [NPI-1, NPI-2]
@@ -59,10 +62,20 @@ paths:
           description: |
             Case-insensitive partial match against provider/organization name (ILIKE `%value%`).
           schema: { type: string, example: "pharmacy" }
+        - name: first_name
+          in: query
+          description: |
+            Case-insensitive wildcard prefix match against individual first name (ILIKE `%first_name%`).
+          schema: { type: string, example: "GARY" }
+        - name: last_name
+          in: query
+          description: |
+            Case-insensitive wildcard prefix match against individual last name (ILIKE `last_name%`).
+          schema: { type: string, example: "DALEY" }
         - name: city
           in: query
           description: |
-            Case-insensitive city name match. Treated as exact after case normalization.
+            Case-insensitive wildcard prefix match against city name (ILIKE `city%`).
           schema: { type: string, example: "Louisville" }
         - name: state
           in: query
@@ -72,6 +85,14 @@ paths:
             minLength: 2
             maxLength: 2
             example: "KY"
+        - name: postal_code
+          in: query
+          description: Prefix match against postal code (ILIKE `postal_code%`).
+          schema: { type: string, example: "40143" }
+        - name: country_code
+          in: query
+          description: Two-letter ISO country code (auto-uppercased, e.g. "US").
+          schema: { type: string, example: "US" }
         - name: taxonomy_description
           in: query
           description: |
@@ -79,15 +100,15 @@ paths:
           schema: { type: string, example: "pharmacy" }
         - name: limit
           in: query
-          description: Number of results per page. Min 1, max 200.
+          description: Number of results per page. Min 1, max 200. Default 10.
           schema:
             type: integer
-            default: 20
+            default: 10
             minimum: 1
             maximum: 200
         - name: skip
           in: query
-          description: Number of results to skip (offset pagination). Min 0.
+          description: Number of results to skip (offset pagination). Min 0. Uncapped.
           schema:
             type: integer
             default: 0
@@ -107,43 +128,65 @@ paths:
                     results:
                       - number: "1720081763"
                         enumeration_type: "NPI-2"
+                        created_epoch: null
+                        last_updated_epoch: "1639785600000"
                         basic:
                           status: "A"
                           organization_name: "TOWNE & COUNTRY PHARMACY FLORIST & GIFTS INC"
-                          enumeration_type: "NPI-2"
+                          organizational_subpart: "NO"
                           authorized_official_first_name: "LORI"
                           authorized_official_last_name: "HENNING"
                           authorized_official_title_or_position: "OWNER/PHARMACIST"
                           last_updated: "2021-12-18"
                         addresses:
-                          - address_type: "LOCATION"
+                          - address_purpose: "MAILING"
+                            address_type: "DOM"
+                            address_1: "100 MAIN ST"
+                            address_2: ""
                             city: "HARDINSBURG"
                             state: "KY"
                             postal_code: "401430675"
                             country_code: "US"
+                            country_name: "United States"
+                          - address_purpose: "LOCATION"
+                            address_type: "DOM"
+                            address_1: "100 MAIN ST"
+                            address_2: ""
+                            city: "HARDINSBURG"
+                            state: "KY"
+                            postal_code: "401430675"
+                            country_code: "US"
+                            country_name: "United States"
                             telephone_number: "2707562151"
+                            fax_number: null
                         taxonomies:
                           - code: "3336C0003X"
-                            desc: ""
+                            taxonomy_group: ""
+                            desc: "Community/Retail Pharmacy"
                             primary: true
-                            state: ""
-                            license: ""
-                search_empty:
-                  summary: Search with no matching results
-                  value:
-                    result_count: 0
-                    results: []
+                            state: "KY"
+                            license: "12345"
 
         "400":
-          description: No search criteria provided
+          description: Invalid request or missing search criteria
           content:
             application/json:
               schema: { $ref: "#/components/schemas/NppesErrorResponse" }
-              example:
-                Errors:
-                  - description: "Please enter a value in at least one of the search criteria fields."
-                    field: "NPI/Number"
-                    number: "2002"
+              examples:
+                missing_criteria:
+                  summary: Missing search criteria
+                  value:
+                    Errors:
+                      - description: "Please enter a value in at least one of the search criteria fields."
+                        field: "NPI/Number"
+                        number: "2002"
+                invalid_npi:
+                  summary: Invalid NPI number format
+                  value:
+                    Errors:
+                      - description: "NPI must be exactly 10 digits."
+                        field: "number"
+                        number: "2001"
 
         "500":
           description: Database or server error
@@ -182,10 +225,10 @@ components:
           type: string
           enum: [NPI-1, NPI-2]
         created_epoch:
-          type: "null"
+          type: string
           nullable: true
         last_updated_epoch:
-          type: "null"
+          type: string
           nullable: true
         basic:
           $ref: "#/components/schemas/NppesBasic"
@@ -211,9 +254,7 @@ components:
     NppesBasic:
       type: object
       description: |
-        Core provider data. Keys vary by `enumeration_type`:
-        - **NPI-2 (organization)**: `organization_name`, `authorized_official_*`
-        - **NPI-1 (individual)**: `first_name`, `last_name`
+        Core provider data. Keys vary by provider type (NPI-1 vs NPI-2).
       properties:
         status:
           type: string
@@ -223,13 +264,16 @@ components:
           type: string
           nullable: true
           example: "2021-12-18"
-        enumeration_type:
+        enumeration_date:
           type: string
-          enum: [NPI-1, NPI-2]
+          nullable: true
         # NPI-2 fields
         organization_name:
           type: string
           nullable: true
+        organizational_subpart:
+          type: string
+          example: "NO"
         authorized_official_first_name:
           type: string
           nullable: true
@@ -252,26 +296,43 @@ components:
         last_name:
           type: string
           nullable: true
+        middle_name:
+          type: string
+          default: ""
+        credential:
+          type: string
+          default: ""
+        sole_proprietor:
+          type: string
+          default: "NO"
+        gender:
+          type: string
+          default: ""
+        certification_date:
+          type: string
+          nullable: true
+        name_prefix:
+          type: string
+          default: ""
+        name_suffix:
+          type: string
+          default: ""
 
     NppesAddress:
       type: object
-      required: [address_type, country_code]
+      required: [address_purpose, address_type, country_code]
       properties:
         address_1:
           type: string
-          nullable: true
         address_2:
           type: string
           default: ""
         city:
           type: string
-          nullable: true
         state:
           type: string
-          nullable: true
         postal_code:
           type: string
-          nullable: true
         country_code:
           type: string
           default: "US"
@@ -279,10 +340,15 @@ components:
         country_name:
           type: string
           example: "United States"
-        address_type:
+        address_purpose:
           type: string
           enum: [LOCATION, MAILING]
+        address_type:
+          type: string
+          enum: [DOM, FGN, MIL]
         telephone_number:
+          type: string
+        fax_number:
           type: string
           nullable: true
 
@@ -293,6 +359,9 @@ components:
         code:
           type: string
           example: "3336C0003X"
+        taxonomy_group:
+          type: string
+          default: ""
         desc:
           type: string
           default: ""
@@ -301,10 +370,10 @@ components:
           example: true
         state:
           type: string
-          default: ""
+          nullable: true
         license:
           type: string
-          default: ""
+          nullable: true
 
     NppesErrorResponse:
       type: object
