@@ -303,7 +303,8 @@ app.get("/api/", async (c) => {
     q.state ||
     q.postal_code ||
     q.country_code ||
-    q.taxonomy_description;
+    q.taxonomy_description ||
+    q.taxonomy_code;   // add this
 
   if (!hasFilter) {
     return c.json(
@@ -320,7 +321,10 @@ app.get("/api/", async (c) => {
 
   if (q.enumeration_type)
     query = query.eq("enumerationtype", q.enumeration_type.toUpperCase());
-
+  
+  if (q.taxonomy_code)
+  query = query.eq("taxonomy_code", q.taxonomy_code);
+  
   // Organization name: contains wildcard (matches official API)
   if (q.organization_name)
     query = query.ilike("name", `%${q.organization_name}%`);
