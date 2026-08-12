@@ -293,9 +293,20 @@ const SELECT_WITH_CMS =
 
 // ── Hono app ──────────────────────────────────────────────────────────────────
 
-const app = new Hono({ basePath: "/functions/v1/nppes-search" });
+// Supabase's Edge Runtime has been observed both stripping and NOT
+// stripping the "/functions/v1/nppes-search" prefix from the incoming
+// path before invoking this function, apparently depending on runtime
+// version -- a `basePath` option pinned to one behavior breaks outright
+// if a platform update silently switches to the other (see git history
+// for a case of exactly that). Every route below is registered under
+// BOTH the bare path and the prefixed path instead, so it matches
+// whichever shape actually arrives.
+const PREFIX = "/functions/v1/nppes-search";
+const withPrefix = (path: string) => [path, PREFIX + path];
 
-app.get("/api/", async (c) => {
+const app = new Hono();
+
+app.get(withPrefix("/api/"), async (c) => {
   if (!supabase) {
     return c.json(nppesError("Server misconfiguration: missing env vars.", "5001"), 500);
   }
@@ -398,7 +409,10 @@ app.get("/api/", async (c) => {
   return c.json({ result_count: count ?? results.length, results });
 });
 
-app.get("/api", (c) => c.redirect("/api/", 301));
-app.get("/", (c) => c.json({ status: "ok", version: "1.0.0" }));
+// Resolved relative to the actual incoming URL (not a hardcoded "/api/")
+// so this lands on the right target whichever of the two registered
+// paths above matched.
+app.get(withPrefix("/api"), (c) => c.redirect(new URL("api/", c.req.url).toString(), 301));
+app.get(withPrefix("/"), (c) => c.json({ status: "ok", version: "1.0.0" }));
 
 Deno.serve(app.fetch);
