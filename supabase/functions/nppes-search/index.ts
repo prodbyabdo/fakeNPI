@@ -8,15 +8,24 @@
 //
 // Intentional deviations from the official API:
 //   - No cap on `skip` (official caps at ~1000; we remove this to expose the full dataset)
-//
-// TEMPORARY DIAGNOSTIC: a catch-all route above everything else reports the
-// exact pathname Hono sees for a request, so we can pick the right basePath.
-// Remove the "DIAGNOSTIC" block once that's confirmed and this is redeployed for real.
+//   - Every result's `medicare` field is CMS DMEPOS supplier enrichment
+//     (total_claims, total_services, total_beneficiaries, medicare_payment,
+//     medicare_allowed) joined in from npi_cms_enrichment, keyed on NPI --
+//     not part of the real NPPES API at all, added so callers get both in
+//     one request instead of a separate CMS lookup per NPI.
 
 import { Hono } from "jsr:@hono/hono@^4.13.1";
 import { createClient, SupabaseClient } from "jsr:@supabase/supabase-js@^2";
 
 // ── Domain types ─────────────────────────────────────────────────────────────
+
+interface CmsEnrichment {
+  total_claims: number | null;
+  total_services: number | null;
+  total_beneficiaries: number | null;
+  medicare_payment: number | null;
+  medicare_allowed: number | null;
+}
 
 interface NpiRecord {
   npi: string;
@@ -42,6 +51,11 @@ interface NpiRecord {
   authorizedofficial_phone: string | null;
   lastupdated: string | null;
   enumeration_date: string | null;
+  // Embedded via the npi_cms_enrichment FK -- PostgREST returns a single
+  // object (not an array) here since npi_cms_enrichment.npi is both PK and
+  // FK, a genuine one-to-one, but we normalize defensively in formatResult
+  // in case that ever comes back as a one-element array instead.
+  npi_cms_enrichment: CmsEnrichment | CmsEnrichment[] | null;
 }
 
 interface NppesAddress {
@@ -67,6 +81,14 @@ interface NppesTaxonomy {
   primary: boolean;
 }
 
+interface NppesMedicare {
+  total_claims: number | null;
+  total_services: number | null;
+  total_beneficiaries: number | null;
+  medicare_payment: number | null;
+  medicare_allowed: number | null;
+}
+
 interface NppesResult {
   created_epoch: string | null;
   enumeration_type: string;
@@ -79,6 +101,7 @@ interface NppesResult {
   identifiers: never[];
   endpoints: never[];
   other_names: never[];
+  medicare: NppesMedicare | null;
 }
 
 interface NppesErrorResponse {
@@ -121,6 +144,21 @@ function deriveCountryName(countryCode: string | null): string {
 
 function nppesError(description: string, number = "5000", field?: string): NppesErrorResponse {
   return { Errors: [{ description, number, ...(field ? { field } : {}) }] };
+}
+
+/** Normalizes the embedded npi_cms_enrichment relation (object or
+ * single-element array, see the NpiRecord.npi_cms_enrichment comment)
+ * into the flat `medicare` shape callers actually want. */
+function formatMedicare(embedded: CmsEnrichment | CmsEnrichment[] | null | undefined): NppesMedicare | null {
+  const row = Array.isArray(embedded) ? embedded[0] : embedded;
+  if (!row) return null;
+  return {
+    total_claims: row.total_claims ?? null,
+    total_services: row.total_services ?? null,
+    total_beneficiaries: row.total_beneficiaries ?? null,
+    medicare_payment: row.medicare_payment ?? null,
+    medicare_allowed: row.medicare_allowed ?? null,
+  };
 }
 
 // ── Formatter ────────────────────────────────────────────────────────────────
@@ -236,6 +274,7 @@ function formatResult(row: NpiRecord): NppesResult {
     identifiers: [],
     endpoints: [],
     other_names: [],
+    medicare: formatMedicare(row.npi_cms_enrichment),
   };
 }
 
@@ -246,9 +285,15 @@ const serviceRoleKey = Deno.env.get("SERVICE_ROLE_KEY") ?? "";
 const supabase: SupabaseClient | null =
   supabaseUrl && serviceRoleKey ? createClient(supabaseUrl, serviceRoleKey) : null;
 
+// Every query selects the same columns -- npi_records' own plus the
+// embedded npi_cms_enrichment relation (PostgREST auto-detects the join
+// from the FK on npi_cms_enrichment.npi, no explicit ON clause needed).
+const SELECT_WITH_CMS =
+  "*, npi_cms_enrichment(total_claims, total_services, total_beneficiaries, medicare_payment, medicare_allowed)";
+
 // ── Hono app ──────────────────────────────────────────────────────────────────
 
-const app = new Hono();
+const app = new Hono({ basePath: "/functions/v1/nppes-search" });
 
 app.get("/api/", async (c) => {
   if (!supabase) {
@@ -275,7 +320,7 @@ app.get("/api/", async (c) => {
 
     const { data, error } = await supabase
       .from("npi_records")
-      .select("*")
+      .select(SELECT_WITH_CMS)
       .eq("npi", npi)
       .limit(1);
 
@@ -304,7 +349,7 @@ app.get("/api/", async (c) => {
     q.postal_code ||
     q.country_code ||
     q.taxonomy_description ||
-    q.taxonomy_code;   // add this
+    q.taxonomy_code;
 
   if (!hasFilter) {
     return c.json(
@@ -317,14 +362,11 @@ app.get("/api/", async (c) => {
     );
   }
 
-  let query = supabase.from("npi_records").select("*", { count: "exact" });
+  let query = supabase.from("npi_records").select(SELECT_WITH_CMS, { count: "exact" });
 
   if (q.enumeration_type)
     query = query.eq("enumerationtype", q.enumeration_type.toUpperCase());
-  
-  if (q.taxonomy_code)
-  query = query.eq("taxonomy_code", q.taxonomy_code);
-  
+
   // Organization name: contains wildcard (matches official API)
   if (q.organization_name)
     query = query.ilike("name", `%${q.organization_name}%`);
@@ -343,6 +385,8 @@ app.get("/api/", async (c) => {
 
   if (q.taxonomy_description)
     query = query.ilike("taxonomy_description", `%${q.taxonomy_description}%`);
+  if (q.taxonomy_code)
+    query = query.eq("taxonomy_code", q.taxonomy_code);
 
   query = query.range(skip, skip + limit - 1);
 
@@ -357,16 +401,4 @@ app.get("/api/", async (c) => {
 app.get("/api", (c) => c.redirect("/api/", 301));
 app.get("/", (c) => c.json({ status: "ok", version: "1.0.0" }));
 
-// Supabase passes the full invocation path to the Deno handler.
-// Strip the /nppes-search function-slug prefix (if present) before Hono
-// routing so that /api/ matches correctly regardless of what the edge
-// runtime injects.
-Deno.serve((req) => {
-  const url = new URL(req.url);
-  const stripped = url.pathname.replace(/^\/nppes-search/, "") || "/";
-  if (stripped !== url.pathname) {
-    url.pathname = stripped;
-    return app.fetch(new Request(url.toString(), req));
-  }
-  return app.fetch(req);
-});
+Deno.serve(app.fetch);
