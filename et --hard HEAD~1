@@ -1,0 +1,76 @@
+[33mcommit 410ab980e81553d03b8324c9eb891a712f4b9203[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Wed Aug 12 16:16:59 2026 +0300
+
+    sss:wq
+    
+
+[33mcommit 6e4fa638a26058e503d897dd40c193c360ad1aa6[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Wed Aug 12 16:14:31 2026 +0300
+
+    feat: add script to upload CSV data to Supabase in batches with column sanitization
+
+[33mcommit 74afbeedace0d80ecb796d6c1c17e71eecf46023[m[33m ([m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m
+Author: malak-00 <158504859+malak-00@users.noreply.github.com>
+Date:   Tue Aug 11 20:54:39 2026 +0300
+
+    Enhance NPPES search filters with taxonomy_code
+    
+    Added taxonomy_code to filter criteria in NPPES search.
+
+[33mcommit 561291b05bab5e471ab161d04c32384a998f836f[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 20:31:43 2026 +0300
+
+    chore: initialize supabase project configuration and version files in .temp directory
+
+[33mcommit 8decaed302dbe36565e826b1e1d978f3631acd5a[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 20:26:25 2026 +0300
+
+    chore: add project-specific terms to cSpell configuration
+
+[33mcommit 222a600894863d534432850a98e42b21faa82812[m
+Author: malak-00 <158504859+malak-00@users.noreply.github.com>
+Date:   Tue Aug 11 20:14:01 2026 +0300
+
+    Modify Hono app for diagnostics and basePath removal
+    
+    Removed basePath from Hono app for diagnostic purposes and added a catch-all route to report request pathnames.
+
+[33mcommit cd2b6ad6c55f34ed1034d126f271c8116ddfbf25[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 18:49:32 2026 +0300
+
+    S
+
+[33mcommit 1d4dc86e06b642ae960ed4f0df37818605663bc6[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 17:58:11 2026 +0300
+
+    docs: add OpenAPI specification for nppes-search function and project contribution guidelines
+
+[33mcommit 272a1ac17d0cddba69818ac8e301c6797972f3df[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 17:28:41 2026 +0300
+
+    gfgffgfg
+
+[33mcommit 988a73e6120f2f7f40d94c6c54b34a95517f2bfa[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 17:27:42 2026 +0300
+
+    S
+
+[33mcommit 0c86ac2dc484440b27532436fcd66333d1a9f7fe[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 17:26:10 2026 +0300
+
+    S'
+
+[33mcommit 4837f23f52ff943babf7d63679996b0e8f7bcc4d[m
+Author: bennnnnnyyyyyyyy <ben.arthur.wiz@gmail.com>
+Date:   Tue Aug 11 17:19:51 2026 +0300
+
+    first commit
